@@ -2,9 +2,8 @@ name: Daily Commit
 
 on:
   schedule:
-    # Runs every day at 00:00 UTC (05:30 IST)
-    - cron: '0 0 * * *'
-  workflow_dispatch: {}  # Adds a "Run workflow" button in the Actions tab
+    - cron: '0 0 * * *'  # daily at 00:00 UTC (05:30 IST)
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -19,31 +18,34 @@ jobs:
           ref: main
           persist-credentials: true
 
-      - name: Create/update file
+      - name: Create/update file with day count
         shell: bash
         run: |
           set -euo pipefail
           FILE="commit_number.md"
+          PATTERN='this is day [0-9]+ commit'
 
           if [ ! -f "$FILE" ]; then
-            echo "Hello, my name is bishwa shah" > "$FILE"
-            echo "commit number: 1" >> "$FILE"
+            echo "this is day 1 commit" > "$FILE"
+            NEXT_COUNT=1
           else
-            CURRENT_COUNT=$(grep -oE 'commit number: [0-9]+' "$FILE" | awk '{print $3}' || true)
+            # Extract current count if present; default to 0
+            CURRENT_COUNT=$(grep -oE "$PATTERN" "$FILE" | awk '{print $4}' || true)
             if [ -z "${CURRENT_COUNT:-}" ]; then
               CURRENT_COUNT=0
-              if ! grep -q 'commit number:' "$FILE"; then
-                echo "commit number: 0" >> "$FILE"
-              fi
             fi
             NEXT_COUNT=$((CURRENT_COUNT + 1))
-            if grep -q 'commit number:' "$FILE"; then
-              sed -i.bak "s/commit number: .*/commit number: ${NEXT_COUNT}/" "$FILE"
-              rm -f "$FILE.bak"
+
+            if grep -qE "$PATTERN" "$FILE"; then
+              sed -i.bak -E "s/$PATTERN/this is day ${NEXT_COUNT} commit/" "$FILE" && rm -f "$FILE.bak"
             else
-              echo "commit number: ${NEXT_COUNT}" >> "$FILE"
+              # If the pattern doesn't exist, append a fresh line
+              echo "this is day ${NEXT_COUNT} commit" >> "$FILE"
             fi
           fi
+
+          # Expose NEXT_COUNT for later steps (commit message)
+          echo "NEXT_COUNT=$NEXT_COUNT" >> $GITHUB_ENV
 
       - name: Commit changes
         shell: bash
@@ -58,5 +60,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore: daily increment"
+          git commit -m "this is day ${NEXT_COUNT} commit"
           git push
