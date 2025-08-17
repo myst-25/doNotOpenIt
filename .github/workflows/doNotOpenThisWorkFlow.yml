@@ -2,8 +2,9 @@ name: Daily Commit
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # daily at 00:00 UTC (05:30 IST)
-  workflow_dispatch: {}
+    # Daily at 00:00 UTC (05:30 IST)
+    - cron: '0 0 * * *'
+  workflow_dispatch: {}  # Manual "Run workflow" button
 
 permissions:
   contents: write
@@ -18,36 +19,28 @@ jobs:
           ref: main
           persist-credentials: true
 
-      - name: Create/update file with day count
+      - name: Update commit counter (number only)
         shell: bash
         run: |
           set -euo pipefail
           FILE="commit_number.md"
-          PATTERN='this is day [0-9]+ commit'
 
           if [ ! -f "$FILE" ]; then
-            echo "this is day 1 commit" > "$FILE"
+            echo "1" > "$FILE"
             NEXT_COUNT=1
           else
-            # Extract current count if present; default to 0
-            CURRENT_COUNT=$(grep -oE "$PATTERN" "$FILE" | awk '{print $4}' || true)
+            # Extract digits from the file; default to 0 if none
+            CURRENT_COUNT=$(tr -dc '0-9' < "$FILE" || true)
             if [ -z "${CURRENT_COUNT:-}" ]; then
               CURRENT_COUNT=0
             fi
             NEXT_COUNT=$((CURRENT_COUNT + 1))
-
-            if grep -qE "$PATTERN" "$FILE"; then
-              sed -i.bak -E "s/$PATTERN/this is day ${NEXT_COUNT} commit/" "$FILE" && rm -f "$FILE.bak"
-            else
-              # If the pattern doesn't exist, append a fresh line
-              echo "this is day ${NEXT_COUNT} commit" >> "$FILE"
-            fi
+            echo "$NEXT_COUNT" > "$FILE"
           fi
 
-          # Expose NEXT_COUNT for later steps (commit message)
-          echo "NEXT_COUNT=$NEXT_COUNT" >> $GITHUB_ENV
+          echo "NEXT_COUNT=$NEXT_COUNT" >> "$GITHUB_ENV"
 
-      - name: Commit changes
+      - name: Commit and push
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
@@ -60,5 +53,63 @@ jobs:
             exit 0
           fi
 
-          git commit -m "this is day ${NEXT_COUNT} commit"
+          git commit -m "chore: commit number ${NEXT_COUNT}"
           git push
+name: Daily Commit
+
+on:
+  schedule:
+    # Daily at 00:00 UTC (05:30 IST)
+    - cron: '0 0 * * *'
+  workflow_dispatch: {}  # Manual "Run workflow" button
+
+permissions:
+  contents: write
+
+jobs:
+  commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - name: Update commit counter (number only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="commit_number.md"
+
+          if [ ! -f "$FILE" ]; then
+            echo "1" > "$FILE"
+            NEXT_COUNT=1
+          else
+            # Extract digits from the file; default to 0 if none
+            CURRENT_COUNT=$(tr -dc '0-9' < "$FILE" || true)
+            if [ -z "${CURRENT_COUNT:-}" ]; then
+              CURRENT_COUNT=0
+            fi
+            NEXT_COUNT=$((CURRENT_COUNT + 1))
+            echo "$NEXT_COUNT" > "$FILE"
+          fi
+
+          echo "NEXT_COUNT=$NEXT_COUNT" >> "$GITHUB_ENV"
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add commit_number.md
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: commit number ${NEXT_COUNT}"
+          git push
+
