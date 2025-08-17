@@ -2,36 +2,63 @@ name: Daily Commit
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Every day at midnight UTC to runs every 7-8 min set cron to '*/1 * * * *'
+    # Runs every day at 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   commit:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
-      with:
-        ref: main 
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true  # uses GITHUB_TOKEN automatically
 
-    - name: Create file and commit
-      run: |
-        FILE="commit_number.md"
-        if [ ! -f "$FILE" ]; then
-          echo "Hello, my name is bishwa shah" > "$FILE"
-          echo "commit number: 1" >> "$FILE"
-        else
-          CURRENT_COUNT=$(grep -oP 'commit number: \K\d+' "$FILE")
-          if [ -z "$CURRENT_COUNT" ]; then
-            CURRENT_COUNT=0
+      - name: Create/update file
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="commit_number.md"
+
+          if [ ! -f "$FILE" ]; then
+            echo "Hello, my name is bishwa shah" > "$FILE"
+            echo "commit number: 1" >> "$FILE"
+          else
+            CURRENT_COUNT=$(grep -oE 'commit number: [0-9]+' "$FILE" | awk '{print $3}' || true)
+            if [ -z "${CURRENT_COUNT:-}" ]; then
+              CURRENT_COUNT=0
+              # ensure the line exists
+              if ! grep -q 'commit number:' "$FILE"; then
+                echo "commit number: 0" >> "$FILE"
+              fi
+            fi
+            NEXT_COUNT=$((CURRENT_COUNT + 1))
+            # Replace or insert the line
+            if grep -q 'commit number:' "$FILE"; then
+              sed -i.bak "s/commit number: .*/commit number: ${NEXT_COUNT}/" "$FILE"
+              rm -f "$FILE.bak"
+            else
+              echo "commit number: ${NEXT_COUNT}" >> "$FILE"
+            fi
           fi
-          NEXT_COUNT=$((CURRENT_COUNT + 1))
-          sed -i "/commit number: /c\commit number: $NEXT_COUNT" "$FILE"
-        fi
-        git config --global user.name "beesou777"
-        git config --global user.email "sbeesou@gmail.com"
-        git add "$FILE"
-        git commit -m "Hello, my name is bishwa shah nice to meet you"
-        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/beesou777/mean-commit.git
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add commit_number.md
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: daily increment"
+          git push
